@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: disaster-prediction-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --worker-class eventlet --workers 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: OPENWEATHER_API_KEY
+        sync: false
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
+      - key: SENTINEL_HUB_CLIENT_ID
+        sync: false
+      - key: SENTINEL_HUB_CLIENT_SECRET
+        sync: false
+      - key: USGS_API_KEY
+        sync: false
