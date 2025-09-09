@@ -142,7 +142,7 @@ export default function FaceDetectionAnalysisScreen() {
       console.log('Sending request to face detection API...');
       
       // Use the same server for both analysis and download
-      const response = await fetch('http://172.20.10.4:5003/api/detect', {
+      const response = await fetch('http://15.207.12.0:5003/api/detect', {
         method: 'POST',
         body: formData,
         headers: {
@@ -229,7 +229,7 @@ export default function FaceDetectionAnalysisScreen() {
   const downloadFileWithRetry = async (filename: string, fileType: 'video' | 'image', maxRetries: number = 3): Promise<string | null> => {
     const servers = [
       // Cloud server
-      'http://172.20.10.4:5003', // Local server fallback
+      'http://15.207.12.0:5003', // Local server fallback
     ];
     
     for (const server of servers) {
