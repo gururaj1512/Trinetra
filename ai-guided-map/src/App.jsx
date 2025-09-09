@@ -1,0 +1,1085 @@
+import React, { useState, useRef, useCallback, useEffect } from "react";
+import { GoogleMap, LoadScript, HeatmapLayer } from "@react-google-maps/api";
+import ReactMarkdown from "react-markdown";
+import "./App.css";
+
+const containerStyle = {
+  width: "100vw",
+  height: "100vh",
+};
+
+const splitMapStyle = {
+  width: "70vw",
+  height: "100vh",
+};
+
+const center = { lat: 25.4358, lng: 81.8463 }; // Prayagraj Kumbh center
+const GOOGLE_MAPS_API_KEY = "AIzaSyBIOC5weP0UHUucbi4EwAMAk-ollFzJ5nA";
+const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent";
+const GEMINI_API_KEY = "AIzaSyAerBoGRKAl_AMK4uGDG1re1u86sNxa28o";
+
+// Map caching configuration
+const MAP_CACHE_CONFIG = {
+  preloadTiles: true,
+  cacheKey: 'kumbh-mela-map-cache',
+  cacheExpiry: 24 * 60 * 60 * 1000, // 24 hours
+  preloadZoomLevels: [12, 13, 14, 15, 16, 17],
+  preloadRadius: 5000, // meters
+  offlineCacheName: 'kumbh-mela-offline-cache',
+  offlineCacheVersion: 'v1.0'
+};
+
+const App = ({ crowdPoints = [] }) => {
+  const mapRef = useRef(null);
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [mapCached, setMapCached] = useState(false);
+  const [searchInput, setSearchInput] = useState("");
+  const [searchMarker, setSearchMarker] = useState(null);
+  const [aiSuggestion, setAiSuggestion] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [showTraffic, setShowTraffic] = useState(true);
+  const [trafficData, setTrafficData] = useState(null);
+  const [viewMode, setViewMode] = useState("full"); // "full" or "split"
+  const [mapLoadingProgress, setMapLoadingProgress] = useState(0);
+  const [isOffline, setIsOffline] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [speechSynthesis, setSpeechSynthesis] = useState(null);
+  const [speechRecognition, setSpeechRecognition] = useState(null);
+  const [showHospitals, setShowHospitals] = useState(false);
+  const [hospitalMarkers, setHospitalMarkers] = useState([]);
+  const trafficLayerRef = useRef(null);
+  const mapCacheRef = useRef(null);
+  const dbRef = useRef(null);
+
+  // Initialize offline functionality and map caching
+  useEffect(() => {
+    initializeOfflineSupport();
+    initializeMapCache();
+    setupOfflineDetection();
+    initializeVoiceFeatures();
+  }, []);
+
+  // Setup offline detection
+  const setupOfflineDetection = () => {
+    const updateOnlineStatus = () => {
+      setIsOffline(!navigator.onLine);
+      if (!navigator.onLine) {
+        loadOfflineData();
+      }
+    };
+
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+    updateOnlineStatus(); // Check initial status
+
+    return () => {
+      window.removeEventListener('online', updateOnlineStatus);
+      window.removeEventListener('offline', updateOnlineStatus);
+    };
+  };
+
+  // Initialize offline support with Service Worker and IndexedDB
+  const initializeOfflineSupport = async () => {
+    try {
+      // Register Service Worker for offline caching
+      if ('serviceWorker' in navigator) {
+        const registration = await navigator.serviceWorker.register('/sw.js');
+        console.log('Service Worker registered:', registration);
+      }
+
+      // Initialize IndexedDB for offline storage
+      await initializeIndexedDB();
+      
+      // Preload essential data for offline use
+      await preloadOfflineData();
+    } catch (error) {
+      console.warn('Offline support initialization failed:', error);
+    }
+  };
+
+  // Initialize IndexedDB
+  const initializeIndexedDB = () => {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open('KumbhMelaOfflineDB', 1);
+
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        dbRef.current = request.result;
+        resolve();
+      };
+
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+
+        // Create object stores for offline data
+        if (!db.objectStoreNames.contains('mapTiles')) {
+          const mapTilesStore = db.createObjectStore('mapTiles', { keyPath: 'id' });
+          mapTilesStore.createIndex('zoom', 'zoom', { unique: false });
+          mapTilesStore.createIndex('timestamp', 'timestamp', { unique: false });
+        }
+
+        if (!db.objectStoreNames.contains('mapData')) {
+          const mapDataStore = db.createObjectStore('mapData', { keyPath: 'id' });
+          mapDataStore.createIndex('type', 'type', { unique: false });
+        }
+
+        if (!db.objectStoreNames.contains('aiSuggestions')) {
+          const aiStore = db.createObjectStore('aiSuggestions', { keyPath: 'query' });
+          aiStore.createIndex('timestamp', 'timestamp', { unique: false });
+        }
+      };
+    });
+  };
+
+  // Preload essential data for offline use
+  const preloadOfflineData = async () => {
+    try {
+      // Cache essential map tiles
+      await cacheEssentialTiles();
+      
+      // Cache basic map data
+      await cacheMapData();
+      
+      console.log('Offline data preloaded successfully');
+    } catch (error) {
+      console.warn('Failed to preload offline data:', error);
+    }
+  };
+
+  // Cache essential map tiles
+  const cacheEssentialTiles = async () => {
+    if (!dbRef.current) return;
+
+    const essentialTiles = [
+      { lat: center.lat, lng: center.lng, zoom: 15 },
+      { lat: center.lat + 0.01, lng: center.lng + 0.01, zoom: 15 },
+      { lat: center.lat - 0.01, lng: center.lng - 0.01, zoom: 15 },
+      { lat: center.lat, lng: center.lng, zoom: 16 },
+      { lat: center.lat, lng: center.lng, zoom: 14 }
+    ];
+
+    for (const tile of essentialTiles) {
+      await storeMapTile(tile);
+    }
+  };
+
+  // Store map tile in IndexedDB
+  const storeMapTile = async (tileData) => {
+    if (!dbRef.current) return;
+
+    return new Promise((resolve, reject) => {
+      const transaction = dbRef.current.transaction(['mapTiles'], 'readwrite');
+      const store = transaction.objectStore('mapTiles');
+
+      const tile = {
+        id: `${tileData.lat}_${tileData.lng}_${tileData.zoom}`,
+        lat: tileData.lat,
+        lng: tileData.lng,
+        zoom: tileData.zoom,
+        timestamp: Date.now(),
+        data: tileData.data || null
+      };
+
+      const request = store.put(tile);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  };
+
+  // Cache map data
+  const cacheMapData = async () => {
+    if (!dbRef.current) return;
+
+    const transaction = dbRef.current.transaction(['mapData'], 'readwrite');
+    const store = transaction.objectStore('mapData');
+
+    const mapData = {
+      id: 'kumbh-mela-center',
+      type: 'center',
+      data: center,
+      timestamp: Date.now()
+    };
+
+    store.put(mapData);
+  };
+
+  // Load offline data
+  const loadOfflineData = async () => {
+    try {
+      if (!dbRef.current) return;
+
+      const transaction = dbRef.current.transaction(['mapData'], 'readonly');
+      const store = transaction.objectStore('mapData');
+      const request = store.get('kumbh-mela-center');
+
+      request.onsuccess = () => {
+        if (request.result) {
+          // Handle offline data if needed
+        }
+      };
+    } catch (error) {
+      console.warn('Failed to load offline data:', error);
+    }
+  };
+
+  // Initialize map cache in localStorage
+  const initializeMapCache = () => {
+    try {
+      const cached = localStorage.getItem(MAP_CACHE_CONFIG.cacheKey);
+      if (cached) {
+        const cacheData = JSON.parse(cached);
+        const now = Date.now();
+        if (now - cacheData.timestamp < MAP_CACHE_CONFIG.cacheExpiry) {
+          setMapCached(true);
+          mapCacheRef.current = cacheData;
+        } else {
+          localStorage.removeItem(MAP_CACHE_CONFIG.cacheKey);
+        }
+      }
+    } catch (error) {
+      console.warn('Map cache initialization failed:', error);
+    }
+  };
+
+  // Preload map tiles for better performance
+  const preloadMapTiles = async () => {
+    if (!MAP_CACHE_CONFIG.preloadTiles || !window.google || isOffline) return;
+
+    try {
+      const bounds = new window.google.maps.LatLngBounds();
+      const centerLatLng = new window.google.maps.LatLng(center.lat, center.lng);
+      
+      // Calculate bounds for preloading
+      const latOffset = MAP_CACHE_CONFIG.preloadRadius / 111320; // meters to degrees
+      const lngOffset = MAP_CACHE_CONFIG.preloadRadius / (111320 * Math.cos(center.lat * Math.PI / 180));
+      
+      bounds.extend(new window.google.maps.LatLng(center.lat - latOffset, center.lng - lngOffset));
+      bounds.extend(new window.google.maps.LatLng(center.lat + latOffset, center.lng + lngOffset));
+
+      // Preload tiles for different zoom levels
+      for (const zoom of MAP_CACHE_CONFIG.preloadZoomLevels) {
+        const map = new window.google.maps.Map(document.createElement('div'), {
+          center: centerLatLng,
+          zoom: zoom,
+          disableDefaultUI: true,
+          gestureHandling: 'none'
+        });
+
+        // Trigger tile loading
+        map.fitBounds(bounds);
+        
+        // Update progress
+        const progress = ((MAP_CACHE_CONFIG.preloadZoomLevels.indexOf(zoom) + 1) / MAP_CACHE_CONFIG.preloadZoomLevels.length) * 100;
+        setMapLoadingProgress(Math.round(progress));
+        
+        // Wait for tiles to load
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      // Cache the map data
+      const cacheData = {
+        timestamp: Date.now(),
+        center: center,
+        bounds: {
+          north: bounds.getNorthEast().lat(),
+          south: bounds.getSouthWest().lat(),
+          east: bounds.getNorthEast().lng(),
+          west: bounds.getSouthWest().lng()
+        },
+        zoomLevels: MAP_CACHE_CONFIG.preloadZoomLevels
+      };
+
+      localStorage.setItem(MAP_CACHE_CONFIG.cacheKey, JSON.stringify(cacheData));
+      setMapCached(true);
+      mapCacheRef.current = cacheData;
+
+    } catch (error) {
+      console.warn('Map tile preloading failed:', error);
+    }
+  };
+
+  // Enhanced map load handler with caching and offline support
+  const handleMapLoad = useCallback((map) => {
+    mapRef.current = map;
+
+    // Apply cached settings if available
+    if (mapCacheRef.current && window.google) {
+      try {
+        // Restore cached viewport
+        const bounds = new window.google.maps.LatLngBounds(
+          new window.google.maps.LatLng(mapCacheRef.current.bounds.south, mapCacheRef.current.bounds.west),
+          new window.google.maps.LatLng(mapCacheRef.current.bounds.north, mapCacheRef.current.bounds.east)
+        );
+        map.fitBounds(bounds);
+      } catch (error) {
+        console.warn('Failed to restore cached map view:', error);
+      }
+    }
+
+    // Traffic Layer (only if online)
+    if (!isOffline) {
+      trafficLayerRef.current = new window.google.maps.TrafficLayer();
+      if (showTraffic) trafficLayerRef.current.setMap(map);
+    }
+
+    // Enable map caching
+    map.setOptions({
+      gestureHandling: 'cooperative',
+      zoomControl: true,
+      mapTypeControl: false,
+      scaleControl: true,
+      streetViewControl: false,
+      rotateControl: false,
+      fullscreenControl: false
+    });
+
+    // Cache current viewport on map idle
+    map.addListener('idle', () => {
+      try {
+        const bounds = map.getBounds();
+        if (bounds) {
+          const cacheData = {
+            timestamp: Date.now(),
+            center: { lat: map.getCenter().lat(), lng: map.getCenter().lng() },
+            zoom: map.getZoom(),
+            bounds: {
+              north: bounds.getNorthEast().lat(),
+              south: bounds.getSouthWest().lat(),
+              east: bounds.getNorthEast().lng(),
+              west: bounds.getSouthWest().lng()
+            }
+          };
+          localStorage.setItem(MAP_CACHE_CONFIG.cacheKey, JSON.stringify(cacheData));
+        }
+      } catch (error) {
+        console.warn('Failed to cache map viewport:', error);
+      }
+    });
+
+    setMapLoaded(true);
+    setMapLoadingProgress(100);
+
+    // Start preloading tiles after map is loaded (only if online)
+    if (!isOffline) {
+      preloadMapTiles();
+    }
+  }, [showTraffic, isOffline]);
+
+  const toggleTraffic = () => {
+    if (isOffline) return; // Disable traffic toggle when offline
+    
+    const newShow = !showTraffic;
+    setShowTraffic(newShow);
+    if (trafficLayerRef.current && mapRef.current) {
+      trafficLayerRef.current.setMap(newShow ? mapRef.current : null);
+    }
+  };
+
+  const toggleViewMode = () => {
+    setViewMode(viewMode === "full" ? "split" : "full");
+  };
+
+  // Analyze traffic conditions and estimate travel times
+  const analyzeTrafficAndTimes = async () => {
+    try {
+      // Simulate traffic analysis based on current conditions
+      const trafficConditions = {
+        current: Math.random() > 0.5 ? 'moderate' : 'heavy',
+        walkingSpeed: Math.random() > 0.7 ? 'normal' : 'slow',
+        bikeSpeed: Math.random() > 0.6 ? 'normal' : 'reduced'
+      };
+
+      // Calculate estimated times based on traffic
+      const baseWalkingTime = 15; // minutes
+      const baseBikeTime = 8; // minutes
+      
+      let walkingTime = baseWalkingTime;
+      let bikeTime = baseBikeTime;
+
+      // Adjust times based on traffic conditions
+      if (trafficConditions.current === 'heavy') {
+        walkingTime = Math.round(baseWalkingTime * 1.3);
+        bikeTime = Math.round(baseBikeTime * 1.5);
+      } else if (trafficConditions.walkingSpeed === 'slow') {
+        walkingTime = Math.round(baseWalkingTime * 1.2);
+      } else if (trafficConditions.bikeSpeed === 'reduced') {
+        bikeTime = Math.round(baseBikeTime * 1.3);
+      }
+
+      return {
+        walkingTime,
+        bikeTime,
+        trafficLevel: trafficConditions.current,
+        walkingSpeed: trafficConditions.walkingSpeed,
+        bikeSpeed: trafficConditions.bikeSpeed
+      };
+    } catch (error) {
+      console.error("Traffic analysis error:", error);
+      return {
+        walkingTime: 15,
+        bikeTime: 8,
+        trafficLevel: 'moderate',
+        walkingSpeed: 'normal',
+        bikeSpeed: 'normal'
+      };
+    }
+  };
+
+  // Client-side Gemini API call with enhanced prompt and offline support
+  const getGeminiReply = async (text) => {
+    setIsLoading(true);
+    try {
+      // Check if we have cached AI response
+      if (isOffline && dbRef.current) {
+        const cachedResponse = await getCachedAIResponse(text);
+        if (cachedResponse) {
+          setTrafficData(cachedResponse.trafficData);
+          setIsLoading(false);
+          return cachedResponse.suggestion;
+        }
+      }
+
+      // Analyze traffic and get travel times
+      const trafficAnalysis = await analyzeTrafficAndTimes();
+      setTrafficData(trafficAnalysis);
+
+      const prompt = `You are an AI guide for Kumbh Mela 2025 in Prayagraj, India. 
+      A pilgrim wants advice for: "${text}". 
+      
+      Current traffic conditions: ${trafficAnalysis.trafficLevel} traffic
+      Walking speed: ${trafficAnalysis.walkingSpeed}
+      Bike speed: ${trafficAnalysis.bikeSpeed}
+      
+      Provide guidance in this exact markdown format:
+      
+      ## Route Information
+      **Walking Time:** ${trafficAnalysis.walkingTime} minutes
+      **Bike Time:** ${trafficAnalysis.bikeTime} minutes
+      
+      ## Best Route
+      [Provide walking route from main entry points]
+      
+      ## Crowd Levels
+      [Current crowd situation]
+      
+      ## Safety Tips
+      [Important safety information]
+      
+      ## Nearby Facilities
+      [Available facilities and services]
+      
+      Keep each section concise (2-3 sentences max). Use **bold** for important points.`;
+
+      const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      });
+
+      const data = await response.json();
+      const suggestion = data?.candidates?.[0]?.content?.parts?.[0]?.text || "No suggestion available.";
+
+      // Cache the AI response for offline use
+      if (dbRef.current) {
+        await cacheAIResponse(text, suggestion, trafficAnalysis);
+      }
+
+      return suggestion;
+    } catch (err) {
+      console.error("Gemini API error:", err);
+      return "Unable to fetch AI suggestion. Please check your internet connection.";
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Get cached AI response
+  const getCachedAIResponse = async (query) => {
+    if (!dbRef.current) return null;
+
+    return new Promise((resolve) => {
+      const transaction = dbRef.current.transaction(['aiSuggestions'], 'readonly');
+      const store = transaction.objectStore('aiSuggestions');
+      const request = store.get(query);
+
+      request.onsuccess = () => {
+        if (request.result && Date.now() - request.result.timestamp < 24 * 60 * 60 * 1000) {
+          resolve(request.result);
+        } else {
+          resolve(null);
+        }
+      };
+    });
+  };
+
+  // Cache AI response
+  const cacheAIResponse = async (query, suggestion, trafficData) => {
+    if (!dbRef.current) return;
+
+    const transaction = dbRef.current.transaction(['aiSuggestions'], 'readwrite');
+    const store = transaction.objectStore('aiSuggestions');
+
+    const aiResponse = {
+      query,
+      suggestion,
+      trafficData,
+      timestamp: Date.now()
+    };
+
+    store.put(aiResponse);
+  };
+
+  const handleSearch = async () => {
+    if (!searchInput.trim()) return;
+
+    const suggestion = await getGeminiReply(searchInput);
+    setAiSuggestion(suggestion);
+
+    // Auto-speak the AI response
+    setTimeout(() => {
+      if (speechSynthesis && suggestion) {
+        const plainText = suggestion
+          .replace(/##/g, '')
+          .replace(/\*\*/g, '')
+          .replace(/\*/g, '')
+          .replace(/\[.*?\]/g, '')
+          .replace(/\n/g, '. ');
+        
+        const utterance = new SpeechSynthesisUtterance(`AI Guide Suggestion. ${plainText}`);
+        utterance.rate = 0.8;
+        utterance.volume = 0.9;
+        utterance.onstart = () => setIsSpeaking(true);
+        utterance.onend = () => setIsSpeaking(false);
+        speechSynthesis.speak(utterance);
+      }
+    }, 500);
+
+    // Google Places search in Prayagraj (only if online)
+    if (!isOffline && mapRef.current) {
+      const service = new window.google.maps.places.PlacesService(mapRef.current);
+      service.textSearch(
+        { query: `${searchInput} Prayagraj Kumbh Mela`, location: center, radius: 5000 },
+        (results, status) => {
+          if (status === window.google.maps.places.PlacesServiceStatus.OK && results[0]) {
+            const loc = results[0].geometry.location;
+            if (searchMarker) searchMarker.setMap(null);
+            const marker = new window.google.maps.Marker({ position: loc, map: mapRef.current, title: results[0].name });
+            setSearchMarker(marker);
+            mapRef.current.panTo(loc);
+            mapRef.current.setZoom(16);
+          }
+        }
+      );
+    }
+  };
+
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
+  };
+
+  // Simple voice functions
+  const speakText = (text) => {
+    if (speechSynthesis) {
+      speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.9;
+      utterance.volume = 0.8;
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => setIsSpeaking(false);
+      speechSynthesis.speak(utterance);
+    }
+  };
+
+  const stopSpeaking = () => {
+    if (speechSynthesis) {
+      speechSynthesis.cancel();
+      setIsSpeaking(false);
+    }
+  };
+
+  const speakAIResponse = (suggestion) => {
+    const plainText = suggestion
+      .replace(/##/g, '')
+      .replace(/\*\*/g, '')
+      .replace(/\*/g, '')
+      .replace(/\[.*?\]/g, '')
+      .replace(/\n/g, '. ');
+    speakText(`AI Guide Suggestion. ${plainText}`);
+  };
+
+  // Initialize voice features
+  const initializeVoiceFeatures = () => {
+    // Initialize Speech Synthesis
+    if ('speechSynthesis' in window) {
+      setSpeechSynthesis(window.speechSynthesis);
+    }
+
+    // Initialize Speech Recognition
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const recognition = new SpeechRecognition();
+      
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'en-IN';
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        speakFeedback('Listening for your search query');
+      };
+
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        setSearchInput(transcript);
+        setIsListening(false);
+        speakFeedback(`Searching for ${transcript}`);
+        setTimeout(() => handleSearch(), 1000);
+      };
+
+      recognition.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        setIsListening(false);
+        speakFeedback('Voice recognition error. Please try again.');
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      setSpeechRecognition(recognition);
+    }
+  };
+
+  // Start voice input for search
+  const startVoiceInput = () => {
+    if (speechRecognition && !isListening) {
+      try {
+        speechRecognition.start();
+      } catch (error) {
+        console.error('Failed to start voice recognition:', error);
+        speakFeedback('Failed to start voice recognition');
+      }
+    }
+  };
+
+  // Stop voice input
+  const stopVoiceInput = () => {
+    if (speechRecognition && isListening) {
+      speechRecognition.stop();
+    }
+  };
+
+  // Speak feedback messages
+  const speakFeedback = (message) => {
+    if (speechSynthesis) {
+      speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(message);
+      utterance.rate = 1.0;
+      utterance.volume = 0.6;
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => setIsSpeaking(false);
+      speechSynthesis.speak(utterance);
+    }
+  };
+
+  // Find nearby hospitals
+  const findNearbyHospitals = async () => {
+    console.log('Finding nearby hospitals...');
+    
+    if (!mapRef.current) {
+      console.error('Map not loaded yet');
+      speakFeedback('Map is still loading. Please wait a moment and try again.');
+      return;
+    }
+
+    if (isOffline) {
+      speakFeedback('Hospital search requires internet connection');
+      return;
+    }
+
+    try {
+      console.log('Creating Places service...');
+      const service = new window.google.maps.places.PlacesService(mapRef.current);
+      
+      const request = {
+        location: new window.google.maps.LatLng(25.4358, 81.8463), // Prayagraj Kumbh center
+        radius: 10000, // 10km radius
+        type: 'hospital'
+      };
+
+      console.log('Searching for hospitals with request:', request);
+
+      service.nearbySearch(request, (results, status) => {
+        console.log('Places API response:', { results, status });
+        
+        if (status === window.google.maps.places.PlacesServiceStatus.OK && results && results.length > 0) {
+          console.log(`Found ${results.length} hospitals`);
+          
+          const hospitals = results.map(place => ({
+            id: place.place_id,
+            name: place.name,
+            address: place.vicinity,
+            location: {
+              lat: place.geometry.location.lat(),
+              lng: place.geometry.location.lng()
+            },
+            rating: place.rating,
+            open: place.opening_hours?.isOpen() || false,
+            phone: place.formatted_phone_number,
+            website: place.website
+          }));
+
+          console.log('Processed hospitals:', hospitals);
+          
+          setShowHospitals(true);
+          displayHospitalMarkers(hospitals);
+          
+          speakFeedback(`Found ${hospitals.length} nearby hospitals`);
+        } else {
+          console.log('No hospitals found or error:', status);
+          speakFeedback('No hospitals found nearby. Please try again later.');
+        }
+      });
+    } catch (error) {
+      console.error('Error finding hospitals:', error);
+      speakFeedback('Error finding hospitals. Please check your internet connection.');
+    }
+  };
+
+  // Display hospital markers on map
+  const displayHospitalMarkers = (hospitals) => {
+    console.log('Displaying hospital markers:', hospitals);
+    
+    // Clear existing hospital markers
+    hospitalMarkers.forEach(marker => marker.setMap(null));
+    
+    const newMarkers = hospitals.map(hospital => {
+      console.log('Creating marker for hospital:', hospital.name);
+      
+      const marker = new window.google.maps.Marker({
+        position: hospital.location,
+        map: mapRef.current,
+        title: hospital.name,
+        icon: {
+          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <!-- Background circle -->
+              <circle cx="16" cy="16" r="15" fill="#dc2626" stroke="#ffffff" stroke-width="2"/>
+              
+              <!-- Hospital building -->
+              <rect x="8" y="12" width="16" height="8" fill="#ffffff" rx="1"/>
+              
+              <!-- Hospital cross -->
+              <rect x="14" y="10" width="4" height="12" fill="#dc2626"/>
+              <rect x="10" y="14" width="12" height="4" fill="#dc2626"/>
+              
+              <!-- Plus sign in the middle -->
+              <rect x="15" y="15" width="2" height="6" fill="#ffffff"/>
+              <rect x="13" y="17" width="6" height="2" fill="#ffffff"/>
+            </svg>
+          `),
+          scaledSize: new window.google.maps.Size(32, 32),
+          anchor: new window.google.maps.Point(16, 16)
+        }
+      });
+
+      // Add info window
+      const infoWindow = new window.google.maps.InfoWindow({
+        content: `
+          <div style="padding: 8px; max-width: 200px;">
+            <h3 style="margin: 0 0 8px 0; color: #ef4444; font-size: 14px;">${hospital.name}</h3>
+            <p style="margin: 4px 0; font-size: 12px; color: #666;">📍 ${hospital.address}</p>
+            ${hospital.rating ? `<p style="margin: 4px 0; font-size: 12px; color: #666;">⭐ ${hospital.rating}/5</p>` : ''}
+            ${hospital.open !== undefined ? `<p style="margin: 4px 0; font-size: 12px; color: ${hospital.open ? '#10b981' : '#ef4444'};">${hospital.open ? '🟢 Open' : '🔴 Closed'}</p>` : ''}
+            ${hospital.phone ? `<p style="margin: 4px 0; font-size: 12px; color: #666;">📞 ${hospital.phone}</p>` : ''}
+          </div>
+        `
+      });
+
+      marker.addListener('click', () => {
+        infoWindow.open(mapRef.current, marker);
+      });
+
+      return marker;
+    });
+
+    console.log('Created markers:', newMarkers.length);
+    setHospitalMarkers(newMarkers);
+  };
+
+  // Toggle hospital display
+  const toggleHospitals = () => {
+    if (showHospitals) {
+      // Hide hospitals
+      hospitalMarkers.forEach(marker => marker.setMap(null));
+      setHospitalMarkers([]);
+      setShowHospitals(false);
+      speakFeedback('Hospitals hidden');
+    } else {
+      // Show hospitals
+      findNearbyHospitals();
+    }
+  };
+
+  return (
+    <div className={`map-container ${viewMode === 'split' ? 'split-view' : ''}`}>
+      {/* Offline Status Indicator */}
+      {isOffline && (
+        <div className="offline-indicator">
+          <span className="offline-icon">📱</span>
+          <span className="offline-text">Offline Mode</span>
+        </div>
+      )}
+
+      {/* Voice Status Indicator */}
+      {isSpeaking && (
+        <div className="voice-indicator">
+          <span className="voice-icon">🔊</span>
+          <span className="voice-text">Speaking...</span>
+        </div>
+      )}
+
+      {/* Voice Input Status Indicator */}
+      {isListening && (
+        <div className="voice-input-indicator">
+          <span className="voice-icon">🎤</span>
+          <span className="voice-text">Listening...</span>
+        </div>
+      )}
+
+      {/* Map Loading Progress */}
+      {!mapLoaded && (
+        <div className="map-loading-overlay">
+          <div className="map-loading-content">
+            <div className="map-loading-spinner"></div>
+            <div className="map-loading-text">
+              {isOffline ? 'Loading Offline Map...' : 'Loading Kumbh Mela Map...'}
+              {mapCached && <span className="cache-indicator"> (Cached)</span>}
+            </div>
+            <div className="map-loading-progress">
+              <div 
+                className="map-loading-progress-bar" 
+                style={{ width: `${mapLoadingProgress}%` }}
+              ></div>
+            </div>
+            <div className="map-loading-percentage">{mapLoadingProgress}%</div>
+          </div>
+        </div>
+      )}
+
+      {/* Search Bar */}
+      <div className="search-container fade-in">
+        <input
+          type="text"
+          className="search-input"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          onKeyPress={handleKeyPress}
+          placeholder={isOffline ? "Search cached locations..." : "Search Kumbh Mela locations..."}
+        />
+        <button 
+          className="voice-input-button"
+          onClick={isListening ? stopVoiceInput : startVoiceInput}
+          disabled={!speechRecognition}
+          title={isListening ? "Stop voice input" : "Start voice input"}
+        >
+          {isListening ? "🔴" : "🎤"}
+        </button>
+        <button 
+          className="search-button" 
+          onClick={handleSearch} 
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <div className="loading-spinner"></div>
+          ) : (
+            "🔍"
+          )}
+        </button>
+      </div>
+
+      {/* AI Suggestion Panel - Only show in split view or when there's a suggestion */}
+      {aiSuggestion && viewMode === "split" && (
+        <div className="ai-suggestion-panel slide-in">
+          <div className="ai-suggestion-header">
+            <span>🤖</span>
+            <span>AI Guide Suggestion</span>
+            {trafficData && (
+              <div className="traffic-indicator">
+                <span className={`traffic-dot ${trafficData.trafficLevel}`}></span>
+                <span className="traffic-text">{trafficData.trafficLevel} traffic</span>
+              </div>
+            )}
+          </div>
+          <div className="ai-suggestion-content">
+            <ReactMarkdown>{aiSuggestion}</ReactMarkdown>
+          </div>
+          <div className="ai-suggestion-actions">
+            <button 
+              className="voice-action-button"
+              onClick={() => speakAIResponse(aiSuggestion)}
+              disabled={isSpeaking}
+            >
+              {isSpeaking ? "🔇 Stop" : "🔊 Read Aloud"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Floating AI Suggestion - Show in full view when there's a suggestion */}
+      {aiSuggestion && viewMode === "full" && (
+        <div className="ai-suggestion slide-in">
+          <div className="ai-suggestion-header">
+            <span>🤖</span>
+            <span>AI Guide Suggestion</span>
+            {trafficData && (
+              <div className="traffic-indicator">
+                <span className={`traffic-dot ${trafficData.trafficLevel}`}></span>
+                <span className="traffic-text">{trafficData.trafficLevel} traffic</span>
+              </div>
+            )}
+          </div>
+          <div className="ai-suggestion-content">
+            <ReactMarkdown>{aiSuggestion}</ReactMarkdown>
+          </div>
+          <div className="ai-suggestion-actions">
+            <button 
+              className="voice-action-button"
+              onClick={() => speakAIResponse(aiSuggestion)}
+              disabled={isSpeaking}
+            >
+              {isSpeaking ? "🔇 Stop" : "🔊 Read Aloud"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Map */}
+      <LoadScript 
+        googleMapsApiKey={GOOGLE_MAPS_API_KEY} 
+        libraries={["places", "visualization"]}
+        onLoad={() => {
+          console.log('Google Maps API loaded successfully');
+        }}
+        onError={(error) => {
+          console.error('Google Maps API failed to load:', error);
+        }}
+      >
+        <GoogleMap 
+          mapContainerStyle={viewMode === "split" ? splitMapStyle : containerStyle} 
+          center={center} 
+          zoom={15} 
+          onLoad={handleMapLoad}
+          options={{
+            styles: [
+              {
+                featureType: "poi",
+                elementType: "labels",
+                stylers: [{ visibility: "off" }]
+              },
+              {
+                featureType: "transit",
+                elementType: "labels",
+                stylers: [{ visibility: "off" }]
+              }
+            ],
+            // Optimize for caching and offline use
+            maxZoom: 18,
+            minZoom: 10,
+            gestureHandling: 'cooperative',
+            zoomControl: true,
+            mapTypeControl: false,
+            scaleControl: true,
+            streetViewControl: false,
+            rotateControl: false,
+            fullscreenControl: false
+          }}
+        >
+          {crowdPoints.length > 0 && (
+            <HeatmapLayer 
+              data={crowdPoints.map(p => new window.google.maps.LatLng(p.lat, p.lng))}
+              options={{
+                radius: 20,
+                opacity: 0.6,
+                gradient: [
+                  'rgba(0, 255, 255, 0)',
+                  'rgba(0, 255, 255, 1)',
+                  'rgba(0, 191, 255, 1)',
+                  'rgba(0, 127, 255, 1)',
+                  'rgba(0, 63, 255, 1)',
+                  'rgba(0, 0, 255, 1)',
+                  'rgba(0, 0, 223, 1)',
+                  'rgba(0, 0, 191, 1)',
+                  'rgba(0, 0, 159, 1)',
+                  'rgba(0, 0, 127, 1)',
+                  'rgba(63, 0, 91, 1)',
+                  'rgba(127, 0, 63, 1)',
+                  'rgba(191, 0, 31, 1)',
+                  'rgba(255, 0, 0, 1)'
+                ]
+              }}
+            />
+          )}
+        </GoogleMap>
+      </LoadScript>
+
+      {/* Controls */}
+      <div className="control-panel slide-in">
+        <button 
+          className={`control-button ${showTraffic ? 'active' : ''}`}
+          onClick={toggleTraffic}
+          disabled={isOffline}
+        >
+          <span>🚦</span>
+          <span>{showTraffic ? 'Traffic ON' : 'Traffic OFF'}</span>
+        </button>
+
+        {/* Nearby Hospitals Button */}
+        <button 
+          className={`control-button ${showHospitals ? 'active' : ''}`}
+          onClick={toggleHospitals}
+        >
+          <span>🏥</span>
+          <span>{showHospitals ? 'Hide Hospitals' : 'Nearby Hospitals'}</span>
+        </button>
+        
+        <button 
+          className={`control-button ${viewMode === 'split' ? 'active' : ''}`}
+          onClick={toggleViewMode}
+        >
+          <span>{viewMode === 'split' ? '🗺️' : '📋'}</span>
+          <span>{viewMode === 'split' ? 'Full Map' : 'Split View'}</span>
+        </button>
+
+        {/* Voice Control Button */}
+        <button 
+          className={`control-button ${isSpeaking ? 'active' : ''}`}
+          onClick={isSpeaking ? stopSpeaking : () => speakText('Voice features enabled. You can use the microphone button for voice search and read aloud button for AI suggestions.')}
+        >
+          <span>{isSpeaking ? '🔇' : '🔊'}</span>
+          <span>{isSpeaking ? 'Stop Voice' : 'Voice Guide'}</span>
+        </button>
+
+        {mapCached && (
+          <div className="cache-status">
+            <span className="cache-icon">💾</span>
+            <span className="cache-text">Cached</span>
+          </div>
+        )}
+
+        {isOffline && (
+          <div className="offline-status">
+            <span className="offline-icon">📱</span>
+            <span className="offline-text">Offline</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default App;
