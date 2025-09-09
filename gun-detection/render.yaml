@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: gun-detection-api
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -c gunicorn.conf.py main:app
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: FLASK_DEBUG
+        value: "false"
+      - key: PORT
+        value: "10000"
+    healthCheckPath: /health
+    disk:
+      name: uploads
+      mountPath: /opt/render/project/src/uploads
+      sizeGB: 1
