@@ -9,12 +9,12 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': {
-        target: 'http://13.203.216.210:5001',
+        target: 'http://15.207.12.0:5001',
         changeOrigin: true,
         secure: false,
       },
       '/crowd-api': {
-        target: 'http://13.203.217.65:5002',
+        target: 'http://13.235.138.46:5002',
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path.replace(/^\/crowd-api/, '/api/analyze')
