@@ -1,0 +1,16 @@
+# Web framework
+Flask>=3.1.2
+Werkzeug>=3.1.2
+gunicorn>=21.2.0
+
+# Core libraries
+agno>=0.3.0
+google-genai>=0.8.3
+pydantic>=2.0
+torch>=2.0.0
+torchvision>=0.15.0
+ultralytics>=8.0.0
+numpy>=1.24.0
+
+# Video support
+opencv-python>=4.10.0.84

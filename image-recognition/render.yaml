@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: mahakumbh-crowd-analysis
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT app:application
+    envVars:
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: FLASK_ENV
+        value: production
+      - key: PORT
+        value: 10000
+    healthCheckPath: /
+    autoDeploy: true
+    branch: main
