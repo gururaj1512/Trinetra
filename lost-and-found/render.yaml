@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: lost-person-detection
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11
+    plan: starter
+    healthCheckPath: /api/health
+    autoDeploy: true
