@@ -1,0 +1,197 @@
+version: '3.8'
+
+services:
+  # Main React Application
+  trinetra-main:
+    build:
+      context: ./Trinetra
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./Trinetra:/app
+      - /app/node_modules
+    depends_on:
+      - redis
+    networks:
+      - trinetra-network
+
+  # AI Guided Map
+  ai-guided-map:
+    build:
+      context: ./ai-guided-map
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3000"
+    environment:
+      - NODE_ENV=development
+      - REACT_APP_GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
+    volumes:
+      - ./ai-guided-map:/app
+      - /app/node_modules
+    networks:
+      - trinetra-network
+
+  # Crowd Detection Service
+  crowd-detection:
+    build:
+      context: ./crowd-detection
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+    volumes:
+      - ./crowd-detection:/app
+      - ./crowd-detection/outputs:/app/outputs
+    networks:
+      - trinetra-network
+
+  # Gun Detection Service
+  gun-detection:
+    build:
+      context: ./gun-detection
+      dockerfile: Dockerfile
+    ports:
+      - "5001:5000"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    volumes:
+      - ./gun-detection:/app
+    networks:
+      - trinetra-network
+
+  # Image Recognition Service
+  image-recognition:
+    build:
+      context: ./image-recognition
+      dockerfile: Dockerfile
+    ports:
+      - "5002:5000"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+    volumes:
+      - ./image-recognition:/app
+    networks:
+      - trinetra-network
+
+  # Lost and Found Service
+  lost-and-found:
+    build:
+      context: ./lost-and-found
+      dockerfile: Dockerfile
+    ports:
+      - "5003:5000"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+    volumes:
+      - ./lost-and-found:/app
+    networks:
+      - trinetra-network
+
+  # Disaster Prediction Backend
+  disaster-prediction-backend:
+    build:
+      context: ./mahakumbh-disaster-prediction/backend
+      dockerfile: Dockerfile
+    ports:
+      - "5004:5000"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+      - WEATHER_API_KEY=${WEATHER_API_KEY}
+      - SATELLITE_API_KEY=${SATELLITE_API_KEY}
+    volumes:
+      - ./mahakumbh-disaster-prediction/backend:/app
+    networks:
+      - trinetra-network
+
+  # Disaster Prediction Frontend
+  disaster-prediction-frontend:
+    build:
+      context: ./mahakumbh-disaster-prediction/frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3002:3000"
+    environment:
+      - NODE_ENV=development
+      - REACT_APP_API_URL=http://disaster-prediction-backend:5000
+    volumes:
+      - ./mahakumbh-disaster-prediction/frontend:/app
+      - /app/node_modules
+    depends_on:
+      - disaster-prediction-backend
+    networks:
+      - trinetra-network
+
+  # User Frontend
+  user-frontend:
+    build:
+      context: ./mahakumbh-disaster-prediction/user-frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3003:3000"
+    environment:
+      - NODE_ENV=development
+      - REACT_APP_API_URL=http://disaster-prediction-backend:5000
+    volumes:
+      - ./mahakumbh-disaster-prediction/user-frontend:/app
+      - /app/node_modules
+    depends_on:
+      - disaster-prediction-backend
+    networks:
+      - trinetra-network
+
+  # People Counting Service
+  peoples:
+    build:
+      context: ./peoples
+      dockerfile: Dockerfile
+    ports:
+      - "5005:5000"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+    volumes:
+      - ./peoples:/app
+    networks:
+      - trinetra-network
+
+  # Redis for caching and real-time data
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - trinetra-network
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=trinetra
+      - POSTGRES_USER=trinetra_user
+      - POSTGRES_PASSWORD=trinetra_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - trinetra-network
+
+volumes:
+  redis_data:
+  postgres_data:
+
+networks:
+  trinetra-network:
+    driver: bridge
