@@ -1,6 +1,6 @@
 # Trinetra: The Divine Eye of Mahakumbh
 
-<img src="images/WhatsApp%20Image%202025-09-09%20at%2005.57.02.jpeg" alt="Trinetra Logo" height="500">
+<img src="images/WhatsApp Image 2025-09-09 at 15.36.44.jpeg" alt="Trinetra Logo" height="500">
 
 **Team ID:** TH1296
 
@@ -30,7 +30,7 @@ Trinetra provides a comprehensive AI-powered solution integrating:
 
 ## 🏗️ System Architecture
 
-<img src="images/WhatsApp%20Image%202025-09-09%20at%2015.36.30.jpeg" alt="System Architecture" height="500">
+<img src="images/WhatsApp%20Image%202025-09-09%20at%2015.36.30.jpeg" alt="System Architecture Overview showing integrated components and data flow" height="500">
 
 ## 🔄 Logic & Workflow
 
@@ -55,7 +55,7 @@ Trinetra provides a comprehensive AI-powered solution integrating:
 ## 👥 User Roles
 
 ### Pilgrim Interface
-<img src="images/WhatsApp%20Image%202025-09-09%20at%2015.36.34.jpeg" alt="Pilgrim Interface" height="500">
+<img src="images/WhatsApp%20Image%202025-09-09%20at%2015.36.34.jpeg" alt="Pilgrim mobile app interface showing family tracking and emergency features" height="500">
 - Register and manage family member profiles
 - Report missing persons with image upload
 - Receive automated alerts for family separation
@@ -64,7 +64,7 @@ Trinetra provides a comprehensive AI-powered solution integrating:
 - Use offline AI navigation for Kumbh area mapping
 
 ### Admin Dashboard
-<img src="images/WhatsApp%20Image%202025-09-09%20at%2015.36.36.jpeg" alt="Admin Dashboard" height="500">
+<img src="images/WhatsApp%20Image%202025-09-09%20at%2015.36.36.jpeg" alt="Administrative control panel with real-time monitoring and crowd analytics" height="500">
 - Monitor live CCTV feeds with automated facial recognition
 - Analyze real-time crowd density heatmaps
 - Receive instant alerts for detected anomalies
@@ -72,7 +72,7 @@ Trinetra provides a comprehensive AI-powered solution integrating:
 - Access advanced disaster prediction tools
 
 ### Medical Admin Interface
-<img src="images/WhatsApp%20Image%202025-09-09%20at%2015.36.38.jpeg" alt="Medical Admin Interface" height="500">
+<img src="images/WhatsApp%20Image%202025-09-09%20at%2015.36.38.jpeg" alt="Medical emergency management system with ambulance coordination and patient tracking" height="500">
 - Process ambulance booking requests
 - Track and coordinate ambulance dispatch
 - Manage medical camp information
@@ -129,6 +129,53 @@ Trinetra/
 └── images/                # Project documentation images
 ```
 
+## 📱 Mobile App (APK)
+
+### Download and Install
+The Trinetra mobile application is available as an APK file for Android devices.
+
+**APK File:** `base.apk`
+
+### Installation Instructions
+
+#### Method 1: Direct Installation (Android)
+1. **Enable Unknown Sources:**
+   - Go to Settings → Security → Unknown Sources
+   - Enable "Install from Unknown Sources" or "Allow from this source"
+
+2. **Download APK:**
+   - Download the `base.apk` file from the repository
+   - Transfer to your Android device via USB, email, or cloud storage
+
+3. **Install:**
+   - Open the APK file on your Android device
+   - Tap "Install" when prompted
+   - Grant necessary permissions (Location, Camera, Storage)
+
+#### Method 2: Using ADB (Advanced)
+```bash
+# Install via ADB (Android Debug Bridge)
+adb install base.apk
+
+# Or install and grant permissions
+adb install -g base.apk
+```
+
+### Mobile App Features
+- **Real-time Family Tracking** with GPS coordinates
+- **Emergency SOS** with one-tap ambulance booking
+- **Lost Person Reporting** with photo upload
+- **Offline Navigation** for Kumbh area mapping
+- **Multilingual Support** for diverse pilgrim community
+- **Push Notifications** for alerts and updates
+
+### System Requirements
+- **Android Version:** 6.0 (API level 23) or higher
+- **RAM:** 2GB minimum, 4GB recommended
+- **Storage:** 100MB available space
+- **Network:** WiFi or 4G/5G for real-time features
+- **Permissions:** Location, Camera, Storage, Network Access
+
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -150,13 +197,16 @@ docker-compose up -d
 ```
 
 3. **Access the applications**
-- Main Application: http://localhost:5000
-- AI Guided Map: http://localhost:5001
+- Main Application: http://localhost:3000
+- AI Guided Map: http://localhost:3001
 - Crowd Detection: http://localhost:5000
 - Gun Detection: http://localhost:5001
 - Image Recognition: http://localhost:5002
 - Lost & Found: http://localhost:5003
-- Disaster Prediction: http://localhost:5004
+- Disaster Prediction Backend: http://localhost:5004
+- Disaster Prediction Frontend: http://localhost:3002
+- User Frontend: http://localhost:3003
+- People Counting: http://localhost:5005
 
 ### Manual Setup
 
@@ -238,34 +288,34 @@ cp image-recognition/env.example image-recognition/.env
 ## 📊 Features Showcase
 
 ### Real-time Crowd Monitoring
-<img src="images/WhatsApp%20Image%202025-09-09%20at%2015.36.40.jpeg" alt="Crowd Monitoring" height="500">
+<img src="images/WhatsApp%20Image%202025-09-09%20at%2015.36.40.jpeg" alt="Live crowd density visualization with heat maps and movement patterns" height="500">
 
 ### Facial Recognition System
-<img src="images/WhatsApp%20Image%202025-09-09%20at%2015.36.41.jpeg" alt="Facial Recognition" height="500">
+<img src="images/WhatsApp%20Image%202025-09-09%20at%2015.36.41.jpeg" alt="AI-powered facial recognition system for lost person identification and matching" height="500">
 
 ### Emergency Response Dashboard
-<img src="images/WhatsApp%20Image%202025-09-09%20at%2015.36.42.jpeg" alt="Emergency Dashboard" height="500">
+<img src="images/WhatsApp%20Image%202025-09-09%20at%2015.36.42.jpeg" alt="Emergency response coordination center with real-time alerts and resource management" height="500">
 
 ### Disaster Prediction Analytics
-<img src="images/WhatsApp%20Image%202025-09-09%20at%2016.16.06.jpeg" alt="Disaster Prediction" height="500">
+<img src="images/WhatsApp%20Image%202025-09-09%20at%2016.16.06.jpeg" alt="Predictive analytics dashboard showing weather patterns, satellite imagery, and risk assessment" height="500">
 
 ### GPS Tracking Interface
-<img src="images/WhatsApp%20Image%202025-09-09%20at%2016.16.06%20(1).jpeg" alt="GPS Tracking" height="500">
+<img src="images/WhatsApp%20Image%202025-09-09%20at%2016.16.06%20(1).jpeg" alt="Real-time GPS tracking system for family member location monitoring and alerts" height="500">
 
 ### Medical Emergency System
-<img src="images/WhatsApp%20Image%202025-09-09%20at%2016.16.07.jpeg" alt="Medical System" height="500">
+<img src="images/WhatsApp%20Image%202025-09-09%20at%2016.16.07.jpeg" alt="Medical emergency response system with ambulance booking and hospital location services" height="500">
 
 ### Navigation Interface
-<img src="images/WhatsApp%20Image%202025-09-09%20at%2016.16.08.jpeg" alt="Navigation" height="500">
+<img src="images/WhatsApp%20Image%202025-09-09%20at%2016.16.08.jpeg" alt="AI-powered navigation system with offline mapping and route optimization" height="500">
 
 ### Admin Control Panel
-<img src="images/WhatsApp%20Image%202025-09-09%20at%2016.16.41.jpeg" alt="Admin Panel" height="500">
+<img src="images/WhatsApp%20Image%202025-09-09%20at%2016.16.41.jpeg" alt="Centralized administrative control panel for system monitoring and management" height="500">
 
 ### Real-time Analytics
-<img src="images/WhatsApp%20Image%202025-09-09%20at%2016.16.43.jpeg" alt="Analytics" height="500">
+<img src="images/WhatsApp%20Image%202025-09-09%20at%2016.16.43.jpeg" alt="Real-time data analytics dashboard with crowd statistics and trend analysis" height="500">
 
 ### Security Monitoring
-<img src="images/WhatsApp%20Image%202025-09-09%20at%2016.16.44.jpeg" alt="Security" height="500">
+<img src="images/WhatsApp%20Image%202025-09-09%20at%2016.16.44.jpeg" alt="Advanced security monitoring system with threat detection and surveillance capabilities" height="500">
 
 ## 🔮 Future Scope
 
@@ -296,7 +346,49 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 👥 Team
 
-**Team ID:** TH0000
+**Team ID:** TH1296
+
+## 📱 Mobile App Troubleshooting
+
+### Common APK Installation Issues
+
+1. **Installation Blocked by Security**
+   ```bash
+   # Solution: Enable Unknown Sources
+   Settings → Security → Unknown Sources → Enable
+   ```
+
+2. **Permission Denied Error**
+   ```bash
+   # Grant all required permissions during installation
+   - Location Access
+   - Camera Access
+   - Storage Access
+   - Network Access
+   ```
+
+3. **App Crashes on Startup**
+   ```bash
+   # Check system requirements
+   - Android 6.0+ required
+   - 2GB RAM minimum
+   - 100MB free storage
+   ```
+
+4. **GPS/Location Not Working**
+   ```bash
+   # Enable location services
+   Settings → Location → Enable
+   Settings → Apps → Trinetra → Permissions → Location → Allow
+   ```
+
+5. **Network Connection Issues**
+   ```bash
+   # Check network settings
+   - WiFi or 4G/5G connection required
+   - Firewall settings
+   - VPN conflicts
+   ```
 
 ## 📞 Support
 
